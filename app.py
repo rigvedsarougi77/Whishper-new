@@ -41,39 +41,19 @@ fraud_keywords = [
     'Cancel'
 ]
 
+def split_audio(input_audio_path, chunk_duration_ms):
+    audio = AudioSegment.from_file(input_audio_path)
+    duration = len(audio)
+    chunks = []
+    for i in range(0, duration, chunk_duration_ms):
+        start = i
+        end = min(i + chunk_duration_ms, duration)
+        chunk = audio[start:end]
+        chunks.append(chunk)
+    return chunks
 
-def to_mp3(audio_file, output_audio_file, upload_path, download_path):
-    if audio_file.name.split('.')[-1].lower() == "wav":
-        audio_data = AudioSegment.from_wav(os.path.join(upload_path, audio_file.name))
-        audio_data.export(os.path.join(download_path, output_audio_file), format="mp3", tags=audio_tags)
-
-    elif audio_file.name.split('.')[-1].lower() == "mp3":
-        audio_data = AudioSegment.from_mp3(os.path.join(upload_path, audio_file.name))
-        audio_data.export(os.path.join(download_path, output_audio_file), format="mp3", tags=audio_tags)
-
-    elif audio_file.name.split('.')[-1].lower() == "ogg":
-        audio_data = AudioSegment.from_ogg(os.path.join(upload_path, audio_file.name))
-        audio_data.export(os.path.join(download_path, output_audio_file), format="mp3", tags=audio_tags)
-
-    elif audio_file.name.split('.')[-1].lower() == "wma":
-        audio_data = AudioSegment.from_file(os.path.join(upload_path, audio_file.name), "wma")
-        audio_data.export(os.path.join(download_path, output_audio_file), format="mp3", tags=audio_tags)
-
-    elif audio_file.name.split('.')[-1].lower() == "aac":
-        audio_data = AudioSegment.from_file(os.path.join(upload_path, audio_file.name), "aac")
-        audio_data.export(os.path.join(download_path, output_audio_file), format="mp3", tags=audio_tags)
-
-    elif audio_file.name.split('.')[-1].lower() == "flac":
-        audio_data = AudioSegment.from_file(os.path.join(upload_path, audio_file.name), "flac")
-        audio_data.export(os.path.join(download_path, output_audio_file), format="mp3", tags=audio_tags)
-
-    elif audio_file.name.split('.')[-1].lower() == "flv":
-        audio_data = AudioSegment.from_flv(os.path.join(upload_path, audio_file.name))
-        audio_data.export(os.path.join(download_path, output_audio_file), format="mp3", tags=audio_tags)
-
-    elif audio_file.name.split('.')[-1].lower() == "mp4":
-        audio_data = AudioSegment.from_file(os.path.join(upload_path, audio_file.name), "mp4")
-        audio_data.export(os.path.join(download_path, output_audio_file), format="mp3", tags=audio_tags)
+def to_mp3(audio_data, output_audio_file):
+    audio_data.export(os.path.join(download_path, output_audio_file), format="mp3", tags=audio_tags)
     return output_audio_file
 
 def process_audio(filename, model_type):
@@ -97,10 +77,12 @@ if uploaded_file is not None:
         f.write((uploaded_file).getbuffer())
     with st.spinner(f"Processing Audio"):
         output_audio_file = uploaded_file.name.split('.')[0] + '.mp3'
-        output_audio_file = to_mp3(uploaded_file, output_audio_file, upload_path, download_path)
-        audio_file = open(os.path.join(download_path, output_audio_file), 'rb')
-        audio_bytes = audio_file.read()
-    print("Opening ", audio_file)
+        chunks = split_audio(os.path.join(upload_path, uploaded_file.name), chunk_duration_ms=60000) # Splitting into chunks of 1 minute
+        chunk_files = []
+        for i, chunk in enumerate(chunks):
+            chunk_file = to_mp3(chunk, f"{i}_{output_audio_file}")
+            chunk_files.append(os.path.join(download_path, chunk_file))
+        audio_files = ' '.join(chunk_files)
     st.markdown("---")
     col1, col2 = st.columns(2)
     with col1:
@@ -111,11 +93,11 @@ if uploaded_file is not None:
 
     if st.button("Generate Transcript"):
         with st.spinner(f"Generating Transcript"):
-            transcript = process_audio(str(os.path.abspath(os.path.join(download_path, output_audio_file))),
-                                       whisper_model_type.lower())
-
-            output_txt_file = str(output_audio_file.split('.')[0] + ".txt")
-
+            transcript = ""
+            for chunk_file in chunk_files:
+                chunk_transcript = process_audio(chunk_file, whisper_model_type.lower())
+                transcript += chunk_transcript + "\n"
+            output_txt_file = uploaded_file.name.split('.')[0] + ".txt"
             save_transcript(transcript, output_txt_file)
             output_file = open(os.path.join(transcript_path, output_txt_file), "r")
             output_file_data = output_file.read()
