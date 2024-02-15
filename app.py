@@ -76,10 +76,15 @@ def to_mp3(audio_file, output_audio_file, upload_path, download_path):
         audio_data.export(os.path.join(download_path, output_audio_file), format="mp3", tags=audio_tags)
     return output_audio_file
 
-def process_audio(filename, model_type):
+def process_audio_chunks(filename, model_type, chunk_size=10*1024):
     model = whisper.load_model(model_type)
-    result = model.transcribe(filename)
-    return result["text"]
+    with open(filename, 'rb') as audio_file:
+        while True:
+            chunk = audio_file.read(chunk_size)
+            if not chunk:
+                break
+            result = model.transcribe(chunk)
+            yield result["text"]
 
 def save_transcript(transcript_data, txt_file):
     with open(os.path.join(transcript_path, txt_file), "w") as f:
@@ -98,8 +103,7 @@ if uploaded_file is not None:
     with st.spinner(f"Processing Audio"):
         output_audio_file = uploaded_file.name.split('.')[0] + '.mp3'
         output_audio_file = to_mp3(uploaded_file, output_audio_file, upload_path, download_path)
-        audio_file = open(os.path.join(download_path, output_audio_file), 'rb')
-        audio_bytes = audio_file.read()
+        audio_file = os.path.join(download_path, output_audio_file)
     print("Opening ", audio_file)
     st.markdown("---")
     col1, col2 = st.columns(2)
@@ -111,29 +115,27 @@ if uploaded_file is not None:
 
     if st.button("Generate Transcript"):
         with st.spinner(f"Generating Transcript"):
-            transcript = process_audio(str(os.path.abspath(os.path.join(download_path, output_audio_file))),
-                                       whisper_model_type.lower())
+            transcript_generator = process_audio_chunks(audio_file, whisper_model_type.lower())
+            transcript_data = ''.join(transcript_generator)
 
             output_txt_file = str(output_audio_file.split('.')[0] + ".txt")
 
-            save_transcript(transcript, output_txt_file)
-            output_file = open(os.path.join(transcript_path, output_txt_file), "r")
-            output_file_data = output_file.read()
+            save_transcript(transcript_data, output_txt_file)
 
             # Fraud detection
-            detected_keywords = [keyword for keyword in fraud_keywords if keyword.lower() in output_file_data.lower()]
+            detected_keywords = [keyword for keyword in fraud_keywords if keyword.lower() in transcript_data.lower()]
             fraud_detected = len(detected_keywords) > 0
 
             output_df = pd.DataFrame({
                 'Uploaded File Name': [uploaded_file.name],
-                'Output File Data': [output_file_data],
+                'Output File Data': [transcript_data],
                 'Detected Keywords': [detected_keywords],
                 'Fraud Detected': [fraud_detected]
             })
 
         if st.download_button(
                 label="Download Transcript",
-                data=output_file_data,
+                data=transcript_data,
                 file_name=output_txt_file,
                 mime='text/plain'
         ):
