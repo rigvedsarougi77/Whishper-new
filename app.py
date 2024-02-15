@@ -3,7 +3,7 @@ import whisper
 import streamlit as st
 from pydub import AudioSegment
 import pandas as pd
-from pydub.utils import mediainfo
+import wave
 import numpy as np
 
 st.set_page_config(
@@ -79,16 +79,18 @@ def to_mp3(audio_file, output_audio_file, upload_path, download_path):
     return output_audio_file
 
 
+
+
 def process_audio_chunks(filename, model_type, chunk_size=10*1024):
     model = whisper.load_model(model_type)
-    audio_info = mediainfo(filename)
-    sample_width = audio_info['sample_width']
-    channels = audio_info['channels']
-    sample_rate = audio_info['sample_rate']
+    
+    with wave.open(filename, 'rb') as audio_file:
+        sample_width = audio_file.getsampwidth()
+        channels = audio_file.getnchannels()
+        sample_rate = audio_file.getframerate()
 
-    with open(filename, 'rb') as audio_file:
         while True:
-            chunk = audio_file.read(chunk_size)
+            chunk = audio_file.readframes(chunk_size)
             if not chunk:
                 break
             audio_np = np.frombuffer(chunk, dtype=np.int16)
