@@ -3,6 +3,8 @@ import whisper
 import streamlit as st
 from pydub import AudioSegment
 import pandas as pd
+from pydub.utils import mediainfo
+import numpy as np
 
 st.set_page_config(
     page_title="Whisper based ASR",
@@ -76,14 +78,22 @@ def to_mp3(audio_file, output_audio_file, upload_path, download_path):
         audio_data.export(os.path.join(download_path, output_audio_file), format="mp3", tags=audio_tags)
     return output_audio_file
 
+
 def process_audio_chunks(filename, model_type, chunk_size=10*1024):
     model = whisper.load_model(model_type)
+    audio_info = mediainfo(filename)
+    sample_width = audio_info['sample_width']
+    channels = audio_info['channels']
+    sample_rate = audio_info['sample_rate']
+
     with open(filename, 'rb') as audio_file:
         while True:
             chunk = audio_file.read(chunk_size)
             if not chunk:
                 break
-            result = model.transcribe(chunk)
+            audio_np = np.frombuffer(chunk, dtype=np.int16)
+            audio_np = audio_np.reshape(-1, channels)
+            result = model.transcribe(audio_np, sample_rate=sample_rate)
             yield result["text"]
 
 def save_transcript(transcript_data, txt_file):
